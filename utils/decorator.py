@@ -1,15 +1,11 @@
-import pandas as pd
-
 from functools import wraps
 
 
 # 过滤缺失值的装饰器
-def decorator(func, file_name, label):
+def start_end(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        df = pd.read_csv(file_name, sep=',').dropna(subset=label)
-
-        # 原有函数放下面
+        print('Start!!!\n')
         func(*args, **kwargs)
-
+        print('End!!!')
     return wrapper

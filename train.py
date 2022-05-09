@@ -1,115 +1,97 @@
-import os
-import shutil
-import datasets
-from utils import train_valid_split, is_normality, generate_bt_input, create_preprocess_sh, create_train_sh
-from utils import create_btfp_sh
+import argparse
+import collections
+import numpy as np
 
-from datasets import extra_other_series
+import torch
 
-import matplotlib
-import matplotlib.pyplot as plt
-import seaborn as sns
+import dataloader.dataloader as module_dataloader
+import model.downstream_model as module_downstream_model
+import model.loss as model_loss
+import model.metric as model_metric
+from trainer import Trainer
+from utils import is_normality, start_end, save_result_to_csv, prepare_device
+from parse_config import ConfigParser
 
-matplotlib.use('TkAgg')
+# 指定随机数状态
+SEED = 42
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+# 为了保证GPU训练时也是结果不变
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 
 def main(config):
-    print(f'config:{config}\n')
+    # 实例化一个记录器，记录器的名字为train,等级默认为2，最低等级DEBUG
+    logger = config.get_logger('train', verbosity=2)
 
-    # 导入数据集
-    classification_dataset = datasets.Mpro(path='data', use_classification=True, splitter=10)
-    regression_dataset = datasets.Mpro(path='data', use_classification=False, splitter=99, norm_type=None)
+    # 数据模块！！！！！！！！！！！！！！！！！！！！！！！回归是否引入score()，lds，模型保存名称不一样！！！！
+    dataloader = config.init_obj('data_loader', module_dataloader, fpdata_dir=config.save_dir.parent)  # 大对象
+    valid_dataloader = dataloader.split_validation()
 
-    # 判断pIC50是否服从正态分布
-    # is_normality(regression_dataset.label, 'pIC50')
+    # 回归模式下判断pIC50是否服从正态分布
+    # is_normality(dataloader.dataset.label, 'pIC50')
 
-    # 数据集划分
-    classification_train, classification_valid = train_valid_split(classification_dataset, process_fn=extra_other_series)  # 若需要将辉瑞/other结构的分子放入验证集，请指定函数
-    regression_train, regression_valid = train_valid_split(regression_dataset, process_fn=extra_other_series)
+    # 下游模型模块！！！！！！！！！！！！！！！！！！！！！！！！！！！model引入FDS,BN层
+    model = config.init_obj('downstream_model', module_downstream_model,
+                            input_dim=dataloader.train_dataset.feature.shape[1],
+                            output_dim=dataloader.train_dataset.label.shape[1])
+    logger.info(model)
 
-    # 可视化选项
-    # print(f'分类数据集的统计:\n{classification_dataset.label.value_counts()}\n')
+    # 将模型传入GPU
+    device, device_ids = prepare_device(config['n_gpu'])
+    model = model.to(device)
+    if len(device_ids) > 1:
+        model = torch.nn.DataParallel(model, device_ids=device_ids)
+    # 可以打印模型每层的参数
+    # model.summary(input_dim=(1, dataloader.train_dataset.feature.shape[1]))
 
-    # sns.histplot(classification_valid.label, bins=100)
-    # plt.show()
+    # 损失与评估模块!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!loss引入LDS
+    criterion = getattr(model_loss, config['loss'])
+    metrics = [getattr(model_metric, met) for met in config['metrics']]
 
-    # 数据集分割
-    classification_data_stor_name = generate_bt_input(classification_train, data_type='train', split_type='extra_other_series')
-    generate_bt_input(classification_valid, data_type='valid', split_type='extra_other_series')
+    # 优化器模块
+    trainable_params = filter(lambda p: p.requires_grad, model.parameters())
+    optimizer = config.init_obj('optimizer', torch.optim, trainable_params)
+    lr_scheduler = config.init_obj('lr_scheduler', torch.optim.lr_scheduler, optimizer)
 
-    regression_data_stor_name = generate_bt_input(regression_train, data_type='train', split_type='extra_other_series')
-    generate_bt_input(regression_valid, data_type='valid', split_type='extra_other_series')
+    # 训练模型
+    trainer = Trainer(model, criterion, metrics, optimizer, config=config,
+                      device=device, data_loader=dataloader, valid_data_loader=valid_dataloader, lr_scheduler=lr_scheduler)
+    trainer.train()
 
-    # 复制dict文件
-    shutil.copyfile('models/dict.txt', classification_data_stor_name + f'/dict.txt')
-    shutil.copyfile('models/dict.txt', classification_data_stor_name + f'/input0/dict.txt')
+    # 预测结果保存
+    save_result_to_csv(dataloader, path=config.save_dir.parent)
 
-    shutil.copyfile('models/dict.txt', regression_data_stor_name + f'/dict.txt')
-    shutil.copyfile('models/dict.txt', regression_data_stor_name + f'/input0/dict.txt')
 
-    # BERT模型数据预处理
-    # 自动生成preprocess_xxx.sh文件
-    create_preprocess_sh(classification_data_stor_name)
-    create_preprocess_sh(regression_data_stor_name)
-    # 手动运行sh文件，运行完毕继续
-    print('>>>>>>在agbt_pro目录下运行preprocess_xxx.sh文件>>>>>>')
-    while True:
-        inputs = input('进入下一步输入ok, 退出程序输入exit:')
-        if inputs == 'ok':
-            break
-        elif inputs == 'exit':
-            exit()
-    print('')
+@start_end
+def cli_main():
+    args = argparse.ArgumentParser(description='AGBT for Mpro')
+    # (action='store'...)表示遇到-c参数时怎么处理，默认为将参数值保存
+    # (nargs=1)表示参数的数量，默认为1。"?"表示可以不输入参数的值
+    # (const=15)将变量赋值为常量,不可自行输入。一般与action='store_const'或nargs='?'配合使用
+    # (choices=[1, 3, 5])允许参数的集合，不准输入集合以外的参数
+    # (required=False)参数能否省略，默认为True
+    # (dest='a')参数别名
+    # (metavar)在说明中显示的参数名称，对于必选参数默认就是参数名称，对于可选参数默认是全大写的参数名称
+    args.add_argument('-c', '--config', default=None, type=str, help='config file data_dir (default: None)')
+    # 指定上次检查点文件路径。是否重新训练（可选）
+    args.add_argument('-r', '--resume', default=None, type=str, help='data_dir to latest checkpoint (default: None)')
+    # 指定用哪些GPU。（可选）
+    args.add_argument('-d', '--device', default=None, type=str, help='indices of GPUs to enable (default: all)')
 
-    # 微调Bert模型
-    # 创建模型存放的目录
-    classification_model_stor_name = f'models{classification_data_stor_name[classification_data_stor_name.find("/"):]}'
-    regression_model_stor_name = f'models{regression_data_stor_name[regression_data_stor_name.find("/"):]}'
-    if not os.path.exists(classification_model_stor_name):
-        os.mkdir(classification_model_stor_name)
-    if not os.path.exists(regression_model_stor_name):
-        os.mkdir(regression_model_stor_name)
+    # 命令行可以覆盖json中的参数
+    CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
+    # options是一个列表
+    # options中的元素：CustomArgs(flags=['--lr', '--learning_rate'], type=<class 'float'>, target='optimizer;args;lr')
+    options = [
+        CustomArgs(flags=['--lr', '--learning_rate'], type=float, target='optimizer;args;lr'),
+        CustomArgs(flags=['--bs', '--batch_size'], type=int, target='data_loader;args;batch_size')
+    ]
+    config = ConfigParser.from_args(args, options)
 
-    # 自动生成train_xxx.sh文件
-    create_train_sh(classification_data_stor_name, classification_model_stor_name, len(classification_train))
-    create_train_sh(regression_data_stor_name, regression_model_stor_name, len(regression_train))
-    # 手动运行sh文件，运行完毕继续
-    print('>>>>>>在agbt_pro目录下运行train_xxx.sh文件>>>>>>')
-    while True:
-        inputs = input('进入下一步输入ok, 退出程序输入exit:')
-        if inputs == 'ok':
-            break
-        elif inputs == 'exit':
-            exit()
-    print('')
-
-    # 自动生成generate_xxx.sh文件
-    create_btfp_sh(classification_data_stor_name, classification_model_stor_name)
-    create_btfp_sh(regression_data_stor_name, regression_model_stor_name)
-    # 手动运行sh文件，运行完毕继续
-    print('>>>>>>在agbt_pro目录下运行generate_xxx.sh文件>>>>>>')
-    while True:
-        inputs = input('进入下一步输入ok, 退出程序输入exit:')
-        if inputs == 'ok':
-            break
-        elif inputs == 'exit':
-            exit()
-    print('')
-
-    # 对分类任务直接进行下游任务训练（如果训练好直接进行下一步）
-    # 展示分类模型的效果（tensorboard？）
-
-    # 对回归任务挑选mol2文件
-    # 生成ag分子指纹
-
-    # fusion
-
-    # 训练下游回归任务（是否加入score信息）（加入LDS和FDS）如果训练好了进入下一步
-    # 展示回归效果
+    main(config)
 
 
 if __name__ == '__main__':
-    print('start!\n')
-    config = 0
-    main(config)
-    print('End!!!!')
+    cli_main()

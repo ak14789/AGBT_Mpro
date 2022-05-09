@@ -3,17 +3,14 @@ import os
 import numpy as np
 import pandas as pd
 
-from typing import Tuple
+from typing import *
 
-import torch
 from torch.utils.data import Dataset
 
 import utils
 
-import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
-matplotlib.use("TkAgg")
 
 
 class Mpro(Dataset):
@@ -27,8 +24,8 @@ class Mpro(Dataset):
         - #Regression valid Molecule: 1316 (IC50 less than 99 μM and docking without error)
 
     Parameters:
-        path (str, optional): path to store the dataset
-        use_classification (bool, optional): whether convert IC50 to active
+        data_dir (str, optional): data_dir to store the dataset
+        use_classification (bool, optional): whether convert IC50 to activity
         norm_type (str, optional): normalization method.[None, 'minmax', 'std']
         splitter (float, optional): bounds of active molecules(default 10) or regression valid molecules(default 99)
     """
@@ -38,16 +35,26 @@ class Mpro(Dataset):
 
     url = "https://covid.postera.ai/covid/activity_data.csv"
 
-    def __init__(self, path: str = 'data', use_classification: bool = True, **kwargs) -> None:
-        path = os.path.expanduser(path)  # 将~/转化为绝对路径，没有则保持不变
-        if not os.path.exists(path):  # 若该数据集存放的路径不存在，则创建路径
-            os.makedirs(path)
+    def __init__(self, data_dir: str = 'data', use_classification: bool = True, **kwargs) -> None:
+        data_dir = os.path.expanduser(data_dir)  # 将~/转化为绝对路径，没有则保持不变
+        if not os.path.exists(data_dir):  # 若该数据集存放的路径不存在，则创建路径
+            os.makedirs(data_dir)
 
-        self.path = path  # path只是目录
+        self.data_dir = data_dir  # path只是目录
         self.use_classification = use_classification
-        self.npy = None  # 执行完load_npy函数后才有值
 
-        file_name = utils.download(self.url, path)  # 若数据集未下载，则下载数据集。返回str(相对路径+文件名)
+        self.feature = None  # 模型要输入的特征，可set_feature或其他自定义函数动态修改(ndarray格式)
+
+        self.bt_npy = None
+        self.ag_npy = None  # 回归专属
+        self.agbt_npy = None  # 回归专属
+
+        self.score = None  # docking_score,通过load_score函数读取csv设定(回归专属)
+        self.docking_type = None  # docking的方式,在load_score时或其他时候设定(回归专属)
+
+        self.pred = None  # 模型预测值，比较实验结果用
+
+        file_name = utils.download(self.url, data_dir)  # 若数据集未下载，则下载数据集。返回str(相对路径+文件名)
 
         # 定义不同模式下的预处理方法
         if self.use_classification:
@@ -57,7 +64,7 @@ class Mpro(Dataset):
         else:
             process_fn = self._load_regression_dataset
             self.splitter = kwargs['splitter'] if 'splitter' in kwargs.keys() else 99
-            self.norm_type = kwargs['norm_type'] if 'splitter' in kwargs.keys() else None
+            self.norm_type = kwargs['norm_type'] if 'norm_type' in kwargs.keys() else None
 
         self.data, self.label = process_fn(file_name)  # 返回dataframe类型
 
@@ -110,19 +117,63 @@ class Mpro(Dataset):
 
         return data, label
 
-    def load_npy(self, data_stor_name: str):
-        data_stor_name = f'{data_stor_name}'
-        self.npy = np.load(data_stor_name)
-        ...
+    def set_feature(self, type_):
+        """
+        将feature设置为某种npy
+
+        Parameter:
+            type_: 必须是'bt', 'ag', 或'agbt'
+        """
+        types = ['bt', 'ag', 'agbt']
+        assert type_ in types, 'parameter:type_ should be "bt","ag" or "agbt"'
+        if type_ == 'bt':
+            self.feature = self.bt_npy
+        elif type_ == 'ag':
+            self.feature = self.ag_npy
+        else:
+            self.feature = self.agbt_npy
+
+    def load_npy(self, fpdata_dir: str, filename: str):
+        """
+        将某种npy导入进来
+
+        Parameters:
+            fpdata_dir: 模型数据保存目录
+            filename: npy的文件名(不带.npy)
+        """
+        type_ = filename[filename.rfind('_')+1:]
+        assert type_ in ['bt', 'ag', 'agbt'], 'filename should end with "bt","ag" or "agbt"'
+        npy_stor_name = f'{fpdata_dir}/{filename}.npy'
+        if type_ == 'bt':
+            self.bt_npy = np.load(npy_stor_name)
+        elif type_ == 'ag':
+            self.ag_npy = np.load(npy_stor_name)
+        else:
+            self.agbt_npy = np.load(npy_stor_name)
+
+    def load_score(self):
+        """导入docking score"""
+        # score.csv文件存放大self.path也就是data/中
+        self.score = None
+
+    def load_docking_type(self):
+        """导入docking type"""
+        # 也是通过score.csv设定
+        self.docking_type = None
+
+    def feature_add(self):
+        """向feature中添加更多特征(dataframe)"""
+        self.feature = None
+
+    # 加入一些可视化统计函数
 
     def __len__(self):
         return len(self.data)
 
-    # 返回的是对应的分子指纹，再研究
+    # 返回类型可以是ndarray,dataloader字典转为tensor
     def __getitem__(self, idx):
-        data = np.array(self.data)
-        label = np.array(self.label)
-        return data[idx], label[idx]
+        label = self.label.values
+        return self.feature[idx], label[idx]
 
 
 def extra_other_series(dataset):
