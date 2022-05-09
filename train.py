@@ -32,7 +32,7 @@ def main(config):
     # 回归模式下判断pIC50是否服从正态分布
     # is_normality(dataloader.dataset.label, 'pIC50')
 
-    # 下游模型模块！！！！！！！！！！！！！！！！！！！！！！！！！！！model引入FDS,BN层
+    # 下游模型模块！！！！！！！！！！！！！！！！！！！！！！！！！！！model引入FDS
     model = config.init_obj('downstream_model', module_downstream_model,
                             input_dim=dataloader.train_dataset.feature.shape[1],
                             output_dim=dataloader.train_dataset.label.shape[1])

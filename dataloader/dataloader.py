@@ -39,9 +39,11 @@ class MproDataLoader(DataLoader):
         self.train_dataset.set_feature('bt')
         self.valid_dataset.set_feature('bt')
 
+        # 以下为回归模式额外的数据处理
         if not self.dataset.use_classification:
             ...
-            # 对于回归任务
+            # 去除docking有问题的分子
+
             # 挑选mol2文件
             #
             # # 生成ag分子指纹
