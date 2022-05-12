@@ -1,5 +1,5 @@
 {
-    "name": "classification_10_None",
+    "name": "classification_99_None",
     "n_gpu": 1,
 
     "downstream_model": {
@@ -11,11 +11,14 @@
         "args":{
             "data_dir": "data/",
             "use_classification": true,
-            "splitter": 10,
+            "splitter": 99,
             "train_rate": 0.8,
+            "norm_type": null,
             "batch_size": 128,
             "shuffle": true,
-            "num_workers": 0
+            "num_workers": 0,
+            "ignore": false,
+            "npy_type": "bt"
         }
     },
     "optimizer": {
@@ -41,7 +44,6 @@
         "epochs": 300,
 
         "save_dir": "data/",
-        "save_period": 5,
         "verbosity": 2,
         
         "monitor": "min val_loss",

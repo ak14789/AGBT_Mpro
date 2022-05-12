@@ -138,10 +138,10 @@ class EpochBatchIterator(EpochBatchIterating):
 
     Compared to :class:`torch.utils.data.DataLoader`, this iterator:
 
-    - can be reused across multiple epochs with the :func:`next_epoch_itr`
+    - can be reused across multiple epochs with the :oldFunc:`next_epoch_itr`
       method (optionally shuffled between epochs)
-    - can be serialized/deserialized with the :func:`state_dict` and
-      :func:`load_state_dict` methods
+    - can be serialized/deserialized with the :oldFunc:`state_dict` and
+      :oldFunc:`load_state_dict` methods
     - supports sharding with the *num_shards* and *shard_id* arguments
 
     Args:

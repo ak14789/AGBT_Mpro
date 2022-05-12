@@ -1,5 +1,5 @@
 {
-    "name": "regression_99_extra_other_series_None",
+    "name": "regression_99_None_minmax_bt",
     "n_gpu": 1,
 
     "downstream_model": {
@@ -12,11 +12,13 @@
             "data_dir": "data/",
             "use_classification": false,
             "splitter": 99,
-            "train_rate": -1,
-            "norm_type": null,
+            "train_rate": 0.8,
+            "norm_type": "minmax",
             "batch_size": 128,
             "shuffle": true,
-            "num_workers": 0
+            "num_workers": 0,
+            "ignore": false,
+            "npy_type": "bt"
         }
     },
     "optimizer": {
@@ -42,11 +44,10 @@
         "epochs": 300,
 
         "save_dir": "data/",
-        "save_period": 5,
         "verbosity": 2,
         
         "monitor": "min val_loss",
-        "early_stop": 15,
+        "early_stop": 50,
 
         "tensorboard": true
     }

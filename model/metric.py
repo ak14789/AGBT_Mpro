@@ -79,4 +79,6 @@ def f1_score(output, target):
 
 def r2(output, target):
     """都是张量"""
+    output = output.detach().cpu()
+    target = target.detach().cpu()
     return r2_score(target, output)

@@ -50,7 +50,7 @@ def build_model(args, task):
 
 def register_model(name):
     """
-    New model types can be added to fairseq with the :func:`register_model`
+    New model types can be added to fairseq with the :oldFunc:`register_model`
     function decorator.
 
     For example::
@@ -82,7 +82,7 @@ def register_model(name):
 def register_model_architecture(model_name, arch_name):
     """
     New model architectures can be added to fairseq with the
-    :func:`register_model_architecture` function decorator. After registration,
+    :oldFunc:`register_model_architecture` function decorator. After registration,
     model architectures can be selected with the ``--arch`` command-line
     argument.
 

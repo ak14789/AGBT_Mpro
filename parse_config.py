@@ -1,9 +1,9 @@
 import os
 import shutil
 import logging
-from pathlib import Path  # 专门操作路径的对象
-from functools import reduce, partial  # 一些高级函数模块
-from operator import getitem  # 运算符模块c实现，getitem(obj,k)得到obj[k]
+from pathlib import Path
+from functools import reduce
+from operator import getitem
 
 from logger import setup_logging
 from utils import read_json, write_json
@@ -20,25 +20,22 @@ class ConfigParser:
         modification: Dict keychain:value, specifying position values to be replaced from config dict.(修改参数的字典)
     """
 
-    def __init__(self, config, resume=None, modification=None):
+    def __init__(self, config, modification=None):
         self._config = _update_config(config, modification)  # json+更新后的参数(有序字典)
-        self.resume = resume  # None或这检查点路径
 
         save_dir = Path(self.config['trainer']['save_dir'])  # 模型保存一级目录(就是data)
         exper_name = self.config['name']  # 模型保存二级目录
 
-        self._save_dir = save_dir / exper_name / 'model'# 模型保存目录
-        self._log_dir = save_dir / exper_name / 'log'  # log保存目录
+        self._save_dir = save_dir / exper_name / 'model'  # 模型保存目录
+        self._log_dir = save_dir / exper_name / 'log'   # log保存目录
 
+        # 创建目录
         if os.path.exists(self._save_dir):
             shutil.rmtree(self._save_dir)
         if os.path.exists(self._log_dir):
             shutil.rmtree(self._log_dir)
         os.makedirs(self._save_dir)
         os.makedirs(self._log_dir)
-
-        # 保存更新后的config到checkpoint目录
-        write_json(self.config, self.save_dir / 'classification_config.json')
 
         # 导入logging
         setup_logging(self.log_dir)
@@ -54,38 +51,20 @@ class ConfigParser:
         Initialize this class from some cli arguments. Used in train, test.
         """
         for opt in options:
-            # *操作符将元组解包，*[a,b]等价于a,b
-            # 对于key:value元组，使用**解包。**{a:1,b:2}等价于a=1,b=2
             args.add_argument(*opt.flags, default=None, type=opt.type)
-        # 如果args是元组，那返回True
+
         if not isinstance(args, tuple):
-            # 将参数实例化给args调用(一般都执行这句, 执行完后也不是元组)
-            args = args.parse_args()
+            args = args.parse_args()  # 将参数实例化给args调用(一般都执行这句, 执行完后也不是元组)
 
-        # 若设置了device就改变环境变量（案例没有）
-        if args.device is not None:
-            os.environ['CUDA_VISIBLE_DEVICES'] = args.device
-
-        if args.resume is not None:
-            resume = Path(args.resume)
-            # resume.parent返回父级目录
-            cfg_fname = resume.parent / 'classification_config.json'  # 若从检查点开始训练，config文件与检查点在同一目录(不用指定-c了)
-        else:
-            msg_no_cfg = "Configuration file need to be specified. Add '-c classification_config.json', for example."
-            assert args.config is not None, msg_no_cfg   # 既不从检查点训练，又没指定config，则报错
-            resume = None
-            cfg_fname = Path(args.config)  # config文件路径(说明-c,-r参数二选一)
+        msg_no_cfg = "Configuration file need to be specified. Add '-c classification_config.json', for example."
+        assert args.config is not None, msg_no_cfg
+        cfg_fname = Path(args.config)  # config文件路径
 
         config = read_json(cfg_fname)  # 返回.json的有序字典(笑死！！有序字典就是个特殊的列表)
 
-        # 如果-r个-c都指定了，那么config按-c的来
-        if args.config and resume:
-            config.update(read_json(args.config))
-
-        # getatter(对象, name)返回对象的属性
-        modification = {opt.target: getattr(args, _get_opt_name(opt.flags)) for opt in options}
         # modifaication是{'optimizer;args;lr': None, 'data_loader;args;batch_size': None}
-        return cls(config, resume, modification)  # 返回该类实例化后的对象
+        modification = {opt.target: getattr(args, _get_opt_name(opt.flags)) for opt in options}
+        return cls(config, modification)  # 返回该类实例化后的对象
 
     def init_obj(self, name, module, *args, **kwargs):
         """
@@ -98,9 +77,6 @@ class ConfigParser:
         # 哦！！！这是字典的方法.更新相应key的参数
         module_args.update(kwargs)
         return getattr(module, module_name)(*args, **module_args)
-
-    def init_ftn(self, name, module, *args, **kwargs):
-        ...
 
     def __getitem__(self, name):
         """得到索引的值"""

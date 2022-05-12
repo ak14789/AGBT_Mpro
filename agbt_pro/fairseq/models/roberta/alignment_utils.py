@@ -74,7 +74,7 @@ def align_features_to_words(roberta, features, alignment):
         roberta (RobertaHubInterface): RoBERTa instance
         features (torch.Tensor): features to align of shape `(T_bpe x C)`
         alignment: alignment between BPE tokens and words returned by
-            func:`align_bpe_to_words`.
+            oldFunc:`align_bpe_to_words`.
     """
     assert features.dim() == 2
 

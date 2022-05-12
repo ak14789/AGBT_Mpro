@@ -12,7 +12,7 @@ class TransformEosLangPairDataset(FairseqDataset):
     """A :class:`~fairseq.data.FairseqDataset` wrapper that transform bos on
     collated samples of language pair dataset.
 
-    Note that the transformation is applied in :func:`collater`.
+    Note that the transformation is applied in :oldFunc:`collater`.
 
     Args:
         dataset (~fairseq.data.FairseqDataset): dataset that collates sample into

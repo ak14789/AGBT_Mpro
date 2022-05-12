@@ -9,7 +9,7 @@ import model.downstream_model as module_downstream_model
 import model.loss as model_loss
 import model.metric as model_metric
 from trainer import Trainer
-from utils import is_normality, start_end, save_result_to_csv, prepare_device
+from utils import is_normality, save_result_to_csv, prepare_device, marker, timer
 from parse_config import ConfigParser
 
 # 指定随机数状态
@@ -25,8 +25,8 @@ def main(config):
     # 实例化一个记录器，记录器的名字为train,等级默认为2，最低等级DEBUG
     logger = config.get_logger('train', verbosity=2)
 
-    # 数据模块！！！！！！！！！！！！！！！！！！！！！！！回归是否引入score()，lds，模型保存名称不一样！！！！
-    dataloader = config.init_obj('data_loader', module_dataloader, fpdata_dir=config.save_dir.parent)  # 大对象
+    # 数据模块
+    dataloader = config.init_obj('data_loader', module_dataloader, fpdata_dir=config.save_dir.parent)
     valid_dataloader = dataloader.split_validation()
 
     # 回归模式下判断pIC50是否服从正态分布
@@ -43,6 +43,7 @@ def main(config):
     model = model.to(device)
     if len(device_ids) > 1:
         model = torch.nn.DataParallel(model, device_ids=device_ids)
+
     # 可以打印模型每层的参数
     # model.summary(input_dim=(1, dataloader.train_dataset.feature.shape[1]))
 
@@ -56,15 +57,16 @@ def main(config):
     lr_scheduler = config.init_obj('lr_scheduler', torch.optim.lr_scheduler, optimizer)
 
     # 训练模型
-    trainer = Trainer(model, criterion, metrics, optimizer, config=config,
-                      device=device, data_loader=dataloader, valid_data_loader=valid_dataloader, lr_scheduler=lr_scheduler)
+    trainer = Trainer(model, criterion, metrics, optimizer, config=config, device=device, data_loader=dataloader,
+                      valid_data_loader=valid_dataloader, lr_scheduler=lr_scheduler)
     trainer.train()
 
     # 预测结果保存
     save_result_to_csv(dataloader, path=config.save_dir.parent)
 
 
-@start_end
+@marker
+@timer
 def cli_main():
     args = argparse.ArgumentParser(description='AGBT for Mpro')
     # (action='store'...)表示遇到-c参数时怎么处理，默认为将参数值保存
@@ -75,14 +77,9 @@ def cli_main():
     # (dest='a')参数别名
     # (metavar)在说明中显示的参数名称，对于必选参数默认就是参数名称，对于可选参数默认是全大写的参数名称
     args.add_argument('-c', '--config', default=None, type=str, help='config file data_dir (default: None)')
-    # 指定上次检查点文件路径。是否重新训练（可选）
-    args.add_argument('-r', '--resume', default=None, type=str, help='data_dir to latest checkpoint (default: None)')
-    # 指定用哪些GPU。（可选）
-    args.add_argument('-d', '--device', default=None, type=str, help='indices of GPUs to enable (default: all)')
 
     # 命令行可以覆盖json中的参数
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
-    # options是一个列表
     # options中的元素：CustomArgs(flags=['--lr', '--learning_rate'], type=<class 'float'>, target='optimizer;args;lr')
     options = [
         CustomArgs(flags=['--lr', '--learning_rate'], type=float, target='optimizer;args;lr'),

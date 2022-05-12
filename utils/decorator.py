@@ -1,11 +1,25 @@
 from functools import wraps
+import time
 
 
-# 过滤缺失值的装饰器
-def start_end(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
+def marker(old_func):
+    """在函数开始和结束时打印标记"""
+    @wraps(old_func)
+    def new_func(*args, **kwargs):
         print('Start!!!\n')
-        func(*args, **kwargs)
+        old_func(*args, **kwargs)
         print('End!!!')
-    return wrapper
+    return new_func
+
+
+def timer(old_func):
+    """记录函数运行的时间并打印"""
+    @wraps(old_func)
+    def new_func(*args, **kwargs):
+        start = time.time()
+        res = old_func(*args, **kwargs)
+        end = time.time()
+        print(f'{old_func.__name__}()的运行时间是{end-start}s\n')
+        return res
+
+    return new_func

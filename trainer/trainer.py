@@ -1,25 +1,17 @@
 import numpy as np
 import torch
-from torchvision.utils import make_grid
 from base import BaseTrainer
-from utils import inf_loop, MetricTracker
+from utils import MetricTracker
 
 
 class Trainer(BaseTrainer):
     """
     第二行以后父类是没有的
     """
-    def __init__(self, model, criterion, metrics_ftns, optimizer, config,
-                 device, data_loader, valid_data_loader=None, lr_scheduler=None, len_epoch=None):
-        super(Trainer, self).__init__(model, criterion, metrics_ftns, optimizer, config, data_loader, device)
-        self.device = device
-        self.dataloader = data_loader  # 训练集dataloader
-
-        if len_epoch is None:
-            self.len_epoch = len(self.dataloader)  # 一个epoch需要更新几次参数,一般根据数据量和batch_size自动算出，不需要指定
-        else:
-            self.dataloader = inf_loop(data_loader)
-            self.len_epoch = len_epoch
+    def __init__(self, model, criterion, metrics_ftns, optimizer, config, device, data_loader,
+                 valid_data_loader=None, lr_scheduler=None):
+        super(Trainer, self).__init__(model, criterion, metrics_ftns, optimizer, config, device, data_loader)
+        self.len_epoch = len(self.dataloader)  # 一个epoch需要更新几次参数,一般根据数据量和batch_size自动算出，不需要指定
 
         self.valid_dataloader = valid_data_loader
         self.do_validation = self.valid_dataloader is not None

@@ -95,7 +95,7 @@ class _FP16OptimizerMixin(object):
     def backward(self, loss):
         """Computes the sum of gradients of the given tensor w.r.t. graph leaves.
 
-        Compared to :func:`fairseq.optim.FairseqOptimizer.backward`, this
+        Compared to :oldFunc:`fairseq.optim.FairseqOptimizer.backward`, this
         function additionally dynamically scales the loss to avoid gradient
         underflow.
         """
@@ -270,7 +270,7 @@ class _MemoryEfficientFP16OptimizerMixin(object):
     def backward(self, loss):
         """Computes the sum of gradients of the given tensor w.r.t. graph leaves.
 
-        Compared to :func:`fairseq.optim.FairseqOptimizer.backward`, this
+        Compared to :oldFunc:`fairseq.optim.FairseqOptimizer.backward`, this
         function additionally dynamically scales the loss to avoid gradient
         underflow.
         """

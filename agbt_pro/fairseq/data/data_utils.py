@@ -107,7 +107,7 @@ def numpy_seed(seed, *addl_seeds):
 
 def collect_filtered(function, iterable, filtered):
     """
-    Similar to :func:`filter` but collects filtered elements in ``filtered``.
+    Similar to :oldFunc:`filter` but collects filtered elements in ``filtered``.
 
     Args:
         function (callable): function that returns ``False`` for elements that

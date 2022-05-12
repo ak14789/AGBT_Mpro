@@ -26,6 +26,7 @@ class Mpro(Dataset):
     Parameters:
         data_dir (str, optional): data_dir to store the dataset
         use_classification (bool, optional): whether convert IC50 to activity
+        ignore (bool, optional): whether ignore molecules in data/docking_ignore.csv
         norm_type (str, optional): normalization method.[None, 'minmax', 'std']
         splitter (float, optional): bounds of active molecules(default 10) or regression valid molecules(default 99)
     """
@@ -35,7 +36,7 @@ class Mpro(Dataset):
 
     url = "https://covid.postera.ai/covid/activity_data.csv"
 
-    def __init__(self, data_dir: str = 'data', use_classification: bool = True, **kwargs) -> None:
+    def __init__(self, data_dir: str = 'data', use_classification: bool = True, ignore: bool = False, **kwargs) -> None:
         data_dir = os.path.expanduser(data_dir)  # 将~/转化为绝对路径，没有则保持不变
         if not os.path.exists(data_dir):  # 若该数据集存放的路径不存在，则创建路径
             os.makedirs(data_dir)
@@ -66,38 +67,61 @@ class Mpro(Dataset):
             self.splitter = kwargs['splitter'] if 'splitter' in kwargs.keys() else 99
             self.norm_type = kwargs['norm_type'] if 'norm_type' in kwargs.keys() else None
 
-        self.data, self.label = process_fn(file_name)  # 返回dataframe类型
+        self.data, self.label = process_fn(file_name, ignore)  # 返回dataframe类型
 
-    def _load_classification_dataset(self, file_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def _load_classification_dataset(self, file_name: str, ignore: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Preprocess dataset and extract features and label
 
         Parameters:
             file_name (str): Path of dataset
+            ignore (bool, optional): whether ignore molecules in data/docking_ignore.csv
 
         Returns:
             data, label (pd.DataFrame, pd.DataFrame): Dataframe of features, Dataframe of preprocessed label
         """
         df = pd.read_csv(file_name, sep=',').dropna(subset=self.target).reset_index(drop=True)  # 删除fIC50的缺失值,并重置索引
 
+        if ignore:
+            try:
+                ignore_cid = pd.read_csv(self.data_dir + 'docking_ignore.csv', header=None).values.reshape(-1)
+                for cid in ignore_cid:
+                    df.drop(df.loc[df['CID'] == cid].index, inplace=True)
+                df.reset_index(drop=True)
+            except FileNotFoundError:
+                warning = f'warning: 没有在{self.data_dir}下找到docking_ignore.csv文件! 未忽略任何分子!\n'
+                print(warning)
+
         data = df[self.features]
         label = df[self.target]
-        df['activity'] = [1 if x <= self.splitter else 0 for x in label.values.reshape(-1)]
+        df['activity'] = [1 if x < self.splitter else 0 for x in label.values.reshape(-1)]
         label = df[['activity']]
 
         return data, label
 
-    def _load_regression_dataset(self, file_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def _load_regression_dataset(self, file_name: str, ignore: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Preprocess dataset and extract features and label
 
         Parameters:
             file_name (str): Path of dataset
+            ignore (bool, optional): whether ignore molecules in data/docking_ignore.csv
 
         Returns:
             data, label (pd.DataFrame, pd.DataFrame): Dataframe of features, Dataframe of preprocessed label
         """
-        df = pd.read_csv(file_name, sep=',').dropna(subset=self.target).reset_index(drop=True)  # 为了保证之后的数据集划分，不管以什么为阈值，只要划分方式没变，验证集和训练集永不相交
+        df = pd.read_csv(file_name, sep=',').dropna(subset=self.target).reset_index(drop=True)
+
+        if ignore:
+            try:
+                ignore_cid = pd.read_csv(self.data_dir + 'docking_ignore.csv', header=None).values.reshape(-1)
+                for cid in ignore_cid:
+                    df.drop(df.loc[df['CID'] == cid].index, inplace=True)
+                df.reset_index(drop=True)
+            except FileNotFoundError:
+                warning = f'warning: 没有在{self.data_dir}下找到docking_ignore.csv文件! 未忽略任何分子!\n'
+                print(warning)
+
         df = df[df.f_avg_IC50 < self.splitter]  # 删除fIC50小于99的数据
 
         data = df[self.features]
@@ -141,7 +165,7 @@ class Mpro(Dataset):
             fpdata_dir: 模型数据保存目录
             filename: npy的文件名(不带.npy)
         """
-        type_ = filename[filename.rfind('_')+1:]
+        type_ = filename[filename.rfind('_') + 1:]
         assert type_ in ['bt', 'ag', 'agbt'], 'filename should end with "bt","ag" or "agbt"'
         npy_stor_name = f'{fpdata_dir}/{filename}.npy'
         if type_ == 'bt':
@@ -188,4 +212,3 @@ def extra_other_series(dataset):
             train_index.append(index)
 
     return train_index, valid_index
-

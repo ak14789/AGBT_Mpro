@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from rdkit.Chem import MolFromSmiles
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +40,7 @@ def download(url: str, path: str, save_file: str = None) -> str:
 
 def generate_bt_input(train_dataset, valid_dataset, fpdata_dir: Path) -> str:
     """
-    输入Dataset，在相应目录下生成bert的输入。返回文件夹名称。顺便把微调模型的目录也创建了,返回微调模型目录
+    输入Dataset，在相应目录下生成bert的输入。返回文件夹名称。顺便把微调模型的目录也创建了,返回微调模型目录(这是针对mpro的，没有通用性)
 
     Parameters:
         train_dataset: 该Dataset应包含path,use_classification等属性,给文件夹起名用
@@ -202,3 +204,42 @@ def save_result_to_csv(dataloader, path: Path):
 
     train_result.to_csv(path / 'train_result.csv', index=False)
     valid_result.to_csv(path / 'valid_result.csv', index=False)
+
+
+def create_docking_csv(data_dir: str):
+    """输入activity路径，生成docking需求csv(针对mpro的)"""
+    df = pd.read_csv(data_dir + 'activity_data.csv').dropna(subset=['f_avg_IC50']).reset_index(drop=True)[['SMILES', 'CID']]
+    df['mol'] = [MolFromSmiles(x) for x in df['SMILES']]
+    acry = MolFromSmiles('O=C(C=C)N')  # 最高优先级
+    chloroace = MolFromSmiles('ClCC(=O)N')  # 次之
+    cn = MolFromSmiles('C#N')  # 最次
+
+    df['acry'] = [x.HasSubstructMatch(acry) for x in df['mol']]
+    df['chl'] = [x.HasSubstructMatch(chloroace) for x in df['mol']]
+    df['cn'] = [x.HasSubstructMatch(cn) for x in df['mol']]
+    df['norm'] = 1
+
+    for index, row in df.iterrows():
+        if row['acry']:
+            df.loc[index, 'acry'] = 1
+            df.loc[index, 'chl'] = 0
+            df.loc[index, 'cn'] = 0
+            df.loc[index, 'norm'] = 0
+        else:
+            df.loc[index, 'acry'] = 0
+
+    for index, row in df.iterrows():
+        if row['chl']:
+            df.loc[index, 'chl'] = 1
+            df.loc[index, 'cn'] = 0
+            df.loc[index, 'norm'] = 0
+        else:
+            df.loc[index, 'chl'] = 0
+
+    for index, row in df.iterrows():
+        if row['cn']:
+            df.loc[index, 'cn'] = 1
+            df.loc[index, 'norm'] = 0
+        else:
+            df.loc[index, 'cn'] = 0
+    df[['SMILES', 'CID', 'norm', 'acry', 'chl', 'cn']].to_csv(data_dir + 'mpro_docking.csv', index=False)

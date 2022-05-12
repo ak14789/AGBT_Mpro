@@ -20,7 +20,7 @@ def setup_task(args, **kwargs):
 def register_task(name):
     """
     New tasks can be added to fairseq with the
-    :func:`~fairseq.tasks.register_task` function decorator.
+    :oldFunc:`~fairseq.tasks.register_task` function decorator.
 
     For example::
 

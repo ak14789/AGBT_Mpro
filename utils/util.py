@@ -1,6 +1,5 @@
 import pandas as pd
 import torch.cuda
-from itertools import repeat
 
 
 def prepare_device(n_gpu_use):
@@ -19,20 +18,6 @@ def prepare_device(n_gpu_use):
     device = torch.device('cuda:0' if n_gpu_use > 0 else 'cpu')
     list_ids = list(range(n_gpu_use))
     return device, list_ids
-
-
-def inf_loop(data_loader):
-    """
-    创建一个无止境的生成器
-
-    example:
-        dataloader = in_loop(dataloader)
-        for i in dataloader:
-            print(i)
-    无止境循环变量dataloader
-    """
-    for loader in repeat(data_loader):
-        yield from loader
 
 
 class MetricTracker:

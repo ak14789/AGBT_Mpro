@@ -96,7 +96,7 @@ class BacktranslationDataset(FairseqDataset):
     def __getitem__(self, index):
         """
         Returns a single sample from *tgt_dataset*. Note that backtranslation is
-        not applied in this step; use :func:`collater` instead to backtranslate
+        not applied in this step; use :oldFunc:`collater` instead to backtranslate
         a batch of samples.
         """
         return self.tgt_dataset[index]

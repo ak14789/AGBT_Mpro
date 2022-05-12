@@ -15,7 +15,7 @@ class BaseTrainer:
         optimizer: 优化器
         config: 对象，config读取相当于有序字典
     """
-    def __init__(self, model, criterion, metric_ftns, optimizer, config, dataloader, device):
+    def __init__(self, model, criterion, metric_ftns, optimizer, config, device, dataloader):
         self.config = config
         self.logger = config.get_logger('trainer', config['trainer']['verbosity'])  # 得到name和等级的记录器
 
@@ -28,7 +28,6 @@ class BaseTrainer:
 
         cfg_trainer = config['trainer']  # train对应的字典
         self.epochs = cfg_trainer['epochs']
-        self.save_period = cfg_trainer['save_period']  # 每隔多少次一保存@@@@@@@@@@@@@@@@?????不要
         # 监视器的作用是提前停止训练
         self.monitor = cfg_trainer.get('monitor', 'off')  # 在字典中查找monitor，找不到返回off
 
@@ -53,9 +52,6 @@ class BaseTrainer:
         # logger的作用只是输出警告， log_dir是数据保存路径, 最后一个参数不是true基本没啥用
         self.writer = TensorboardWriter(config.log_dir, self.logger, cfg_trainer['tensorboard'])
 
-        if config.resume is not None:
-            self._resume_checkpoint(config.resume)
-
     @abstractmethod
     def _train_epoch(self, epoch):
         """
@@ -68,8 +64,9 @@ class BaseTrainer:
         完整的训练逻辑
         """
         not_improved_count = 0  # 未提升计数
+        best_log = {}
         for epoch in range(self.start_epoch, self.epochs + 1):
-            result = self._train_epoch(epoch)  # 输出的是啥？
+            result = self._train_epoch(epoch)  # 输出的是字典
 
             # 记录第几轮，等信息。。。。
             log = {'epoch': epoch}
@@ -97,6 +94,7 @@ class BaseTrainer:
                     # 如果提升了，就更新最佳损失
                     self.mnt_best = log[self.mnt_metric]
                     not_improved_count = 0
+                    best_log = log
                     best = True
                 else:
                     not_improved_count += 1
@@ -104,62 +102,31 @@ class BaseTrainer:
                 # 若没提升的epoch超过了早停的步数，则退出训练
                 if not_improved_count > self.early_stop:
                     self.logger.info("Validation performance didn\'t improve for {} epochs. "
-                                     "Training stops.".format(self.early_stop))
+                                     "Training stops.\n".format(self.early_stop))
+                    if best_log:
+                        self.logger.info("best result:")
+                        for key, value in best_log.items():
+                            self.logger.info('    {:15s}: {}'.format(str(key), value))  # 15个字符的字符串
                     break
 
-            ############## 这步要改啊
             # 如果是最好，将预测结果保存到train_dataset和valid_dataset
             if best:
-                self._save_checkpoint(epoch, save_best=True)
+                self._save_model()
                 self.model.eval()
                 with torch.no_grad():
                     self.dataloader.train_dataset.pred = self.model(torch.from_numpy(self.dataloader.train_dataset.feature).to(self.device).float())
                     self.dataloader.valid_dataset.pred = self.model(torch.from_numpy(self.dataloader.valid_dataset.feature).to(self.device).float())
-            # if epoch % self.save_period == 0:
-            #     # 如果epoch是save_period的整数倍,则保存模型
-            #     # 这样会有个问题，如果save_period不是1，有可能保存的并不是最佳的那个
-            #     self._save_checkpoint(epoch, save_best=best)
 
-    def _save_checkpoint(self, epoch, save_best=False):
+            if epoch == self.epochs:
+                if best_log:
+                    self.logger.info("best result:")
+                    for key, value in best_log.items():
+                        self.logger.info('    {:15s}: {}'.format(str(key), value))  # 15个字符的字符串
+
+    def _save_model(self):
         """
-        保存模型检查点
+        保存模型
         """
-        arch = type(self.model).__name__
-        state = {
-            'arch': arch,
-            'epoch': epoch,
-            'state_dict': self.model.state_dict(),
-            'optimizer': self.optimizer.state_dict(),
-            'monitor_best': self.mnt_best,
-            'config': self.config
-        }
-        # filename = str(self.checkpoint_dir / 'checkpoint-epoch{}.pth'.format(epoch))
-        # torch.save(state, filename)
-        # self.logger.info("Saving checkpoint: {} ...".format(filename))
-        if save_best:
-            best_path = str(self.checkpoint_dir / 'model_best.pth')
-            torch.save(state, best_path)
-            self.logger.info("Saving current best: model_best.pth ...")
-
-    def _resume_checkpoint(self, resume_path):
-        resume_path = str(resume_path)
-        self.logger.info("Loading checkpoint: {} ...".format(resume_path))
-        checkpoint = torch.load(resume_path)
-        self.start_epoch = checkpoint['epoch'] + 1
-        self.mnt_best = checkpoint['monitor_best']
-
-        # load architecture params from checkpoint.
-        if checkpoint['config']['arch'] != self.config['arch']:
-            self.logger.warning("Warning: Architecture configuration given in config file is different from that of "
-                                "checkpoint. This may yield an exception while state_dict is being loaded.")
-        self.model.load_state_dict(checkpoint['state_dict'])
-
-        # load optimizer state from checkpoint only when optimizer type is not changed.
-        if checkpoint['config']['optimizer']['type'] != self.config['optimizer']['type']:
-            self.logger.warning("Warning: Optimizer type given in config file is different from that of checkpoint. "
-                                "Optimizer parameters not being resumed.")
-        else:
-            self.optimizer.load_state_dict(checkpoint['optimizer'])
-
-        self.logger.info("Checkpoint loaded. Resume training from epoch {}".format(self.start_epoch))
-
+        best_path = str(self.checkpoint_dir / 'model_best.pth')
+        torch.save(self.model, best_path)
+        self.logger.info("Saving current best: model_best.pth ...")
